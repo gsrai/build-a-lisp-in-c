@@ -82,3 +82,37 @@ property of trees to traverse them generically (work on any tree) using recursiv
 So far the interpreter will output any syntax errors caught by the parser, but what about eval errors, like divide by zero.
 One method of catch errors is to define a type returned by eval (lisp val or lval) which can be an error or a number.
 Using enums and switch statements we can add error handling logic as part of eval rather than a second thought.
+
+### S-Expressions ###
+
+In lisps, data and code use the same structures, symbolic expressions or s-expressions for short. An s-expression
+is a list built up recursively of numbers, symbols and other lists. It could also be described as a variable length
+list of other values.
+
+#### The stack and the heap ####
+
+It is important to understand the memory model of programming languages seeing as we are developing one. Memory in
+programming languages is usually split between the stack and the heap, usually a stack has a fixed size (hence stack overflow)
+and there can be many stacks but only one heap.
+
+The stack is where the program lives, all teh temporary variables and data structures. Every time you call a function a new
+area of the stack is allocated and local variables (and arguements) are copied into this area, as well as meta data. Once the
+function completes its execution it is unallocated.
+
+The heap is a section of memory for long lived objects, memory here has to be manually allocated and deallocated (requested from
+the operating system using syscalls).
+
+In conclusion, the stack and the heap are sections of memory with individual purposes, the stack is fixed size, whereas the heap
+is only limited by the OS or real memory capacity.
+
+We need to modify the parser grammar to accept a Symbol and an Sexpression. A Symbol is just an operator like `add`,
+an Sexpression is any expression (number or symbol or sexpression) between paretheses.
+
+#### Read and Eval and the REPL (Read Eval Print Loop) ###
+
+Adding sexpressions means we need to read and construct a list of lisp values (lvals) from the ast in order to evaluate it.
+So the first step is to convert the AST to an sexpression, and the second step is to evaluate it using normal lisp rules.
+
+An sexpression in lisp is usually implemented as a linked list. It can be an atom (such as a symbol of number) or two other
+sexpressions cons(joined) together (cons is an operation, short for construct memory object, it is a fundamental function in lisps).
+An sexpression in the list is know as a cell (or a cons cell).

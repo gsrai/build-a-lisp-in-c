@@ -150,3 +150,5 @@ int main(int argc, char** argv) {
     mpc_cleanup(4, Number, Operator, Expr, Program);
     return 0;
 }
+
+// build command: gcc parsing.c mpc.c -ledit -lm -o parsing
