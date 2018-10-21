@@ -53,7 +53,32 @@ Expression => either a number or parentheses which have an operator followed by 
 Operator => + - * /
 Number => one or more characters with an optional - to represent negative numbers. This can be encoded by the regex rule `/-?[0-9]+/`.
 
+In order to use the grammar to build a structure representation of the language (an AST (abstract sytax tree)) we need to use a parser.
+A Parser will take in a formal grammar specification and some input, and will return a computable representation of the input in the
+form of an abstract syntax tree.
+
 floating point regex: `number  : /-?[0-9]*\\.?[0-9]+/ ;`?
 
 ### Evaluation ###
 
+With the parser we have an internal structure now, but we have yet to evaluate it. The evaluation step
+actually performs the computations encoded by the language.
+
+The internal structure is called an abstract syntax tree, where the leaves are numbers and operators,
+and the branches are the rules used to produce the tree which encodes information of how to traverse and evaluate it.
+
+The AST is represented by the struct `mpc_ast_t` (part of the micro parser combinators library). The fields it contains are:
+`tag` => a string representing a list of all the rules used to parse an item.
+`contents` => a string of the content (leaf), it will be an operator or number in our case.
+`state` => struct for storing the state of the parser.
+`children_num` => a count for the pointer to the children of that node (it is a tree after all).
+`children` => an array of pointers to struct of another ast. (** is either a multi dimentional array or an array of refs which is the same thing.)
+
+The benefit of a tree structure is that it is a recursive definition, a tree has children that are also trees. We can use this
+property of trees to traverse them generically (work on any tree) using recursive functions.
+
+#### Errors ####
+
+So far the interpreter will output any syntax errors caught by the parser, but what about eval errors, like divide by zero.
+One method of catch errors is to define a type returned by eval (lisp val or lval) which can be an error or a number.
+Using enums and switch statements we can add error handling logic as part of eval rather than a second thought.
