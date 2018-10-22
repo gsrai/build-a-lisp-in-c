@@ -116,3 +116,28 @@ So the first step is to convert the AST to an sexpression, and the second step i
 An sexpression in lisp is usually implemented as a linked list. It can be an atom (such as a symbol of number) or two other
 sexpressions cons(joined) together (cons is an operation, short for construct memory object, it is a fundamental function in lisps).
 An sexpression in the list is know as a cell (or a cons cell).
+
+### Q-Expressions ###
+
+There is a common pattern when adding new features to a language, it involves the following steps:
+Syntax => Add a new rule to the language grammar.
+Representation => Add a new data type variation to represent the feature.
+Parsing => Add ne functions for reading the feature from the ast.
+Semantics => Add a new function for evaluating and manipulating the feature.
+
+Using this pattern we can add a new feature, Quoted Expressions. A Q-expression will be a new type of lisp value.
+It is not meant to be evaluated by lisp, so when encountered by the eval function it is left as it is. They are useful
+for storing and manipulating numbers, symbols and other sexpressions. In actual lisp implementations they use macros
+like `'` to prevent evaluation.
+
+Q-expressions here will be a list type, we will need to define some inbuilt operations like:
+List => constructs a q-expr
+Head => returns a q-expr of the first element
+Tail => returns a q-expr of the rest of the list
+join => join the two lists into one
+eval => eval the q-expression
+
+## differences from other lisps ##
+
+Q-expressions are implemented as macros
+Other lisps use cons and linked list data structure over a dynamic array.

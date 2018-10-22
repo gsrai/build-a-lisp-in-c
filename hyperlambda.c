@@ -25,8 +25,13 @@ void add_history(char* unused) { /* mock */ }
 #include <editline/readline.h>
 #endif
 
+/* lval is a lisp value type, it can be a number, error or operator/symbol.
+ * it holds a count to how many pointers are in the array cell, cell is an
+ * array of pointers to lisp values. basically a linked list structure but
+ * implemented as a dynamic array.
+*/
 typedef struct lval {
-    int type; // can be NUM or ERR
+    int type;
     long num;
 
     char* err;
@@ -34,9 +39,11 @@ typedef struct lval {
 
     int count;
     struct lval** cell;
-} lval; // lisp value
+} lval;
 
-enum { LVAL_NUM, LVAL_ERR, LVAL_SYM, LVAL_SEXPR };  // possible lval types
+lval* lval_eval(lval* v);
+
+enum { LVAL_NUM, LVAL_ERR, LVAL_SYM, LVAL_SEXPR, LVAL_QEXPR };  // possible lval types
 
 /* constructors */
 lval* lval_num(long x) {
@@ -61,7 +68,13 @@ lval* lval_sym(char* str) {
     strcpy(v->sym, str);
     return v;
 }
-
+/* sexpr type represents a symbolic expression defined by zero or more
+ * expressions wrapped in parentheses. The constructor allocates some memory
+ * for a new sexpression, which is just a single lval that has no children
+ * yet and points to null. This is setting up the sexpression to grow dynamically
+ * as the reader adds more expressions to the sexpression. cell will point to
+ * many children lvals which can be any valid expression (see formal grammar).
+*/
 lval* lval_sexpr(void) {
     lval* v = (lval*) malloc(sizeof(lval));
     v->type = LVAL_SEXPR;
@@ -70,7 +83,16 @@ lval* lval_sexpr(void) {
     return v;
 }
 
-/* deconstructor */
+/* pointer to a new empty q expression */
+lval* lval_qexpr(void) {
+    lval* v = (lval*) malloc(sizeof(lval));
+    v->type = LVAL_QEXPR;
+    v->count = 0;
+    v->cell = NULL;
+    return v;
+}
+
+/* deconstructor: need to free else memory leaks */
 void lval_del(lval* v) {
     switch (v->type) {
         case LVAL_NUM:
@@ -82,6 +104,7 @@ void lval_del(lval* v) {
         case LVAL_SYM:
             free(v->sym);
             break;
+        case LVAL_QEXPR: // qexpressions have similar semantics to sexpr, except you don't eval
         case LVAL_SEXPR: // free each sexpr pointed to by the array of pointers: cell
             for (int i = 0; i < v->count; i++) {
                 lval_del(v->cell[i]);
@@ -105,18 +128,32 @@ lval* lval_add(lval* v, lval* x) {
     v->cell[v->count - 1] = x;
     return v;
 }
-
+/* reader takes an ast from the parser, compares the tags (expr, number, regex etc)
+ * and creates lval array which represents the sexpression. Don't forget
+ * the ast is one giant s-expression.
+ * 
+ * e.g. the line: (+ 2 2) is convert to
+ * root : lval sexpr | count 3 | cell [ addr1, addr2, addr3];
+ * addr1: lval symbol | count undefined | cell undefined | sym +
+ * addr2: lval number | count undefined | cell undefined | num 2
+ * addr2: lval number | count undefined | cell undefined | num 2
+ * 
+ * the root or first lval* is returned
+*/
 lval* lval_read(mpc_ast_t* ast) {
     if(strstr(ast->tag, "number")) { return lval_read_num(ast); }
     if(strstr(ast->tag, "symbol")) { return lval_sym(ast->contents); }
 
     lval* x = NULL;
-    if (strcmp(ast->tag, ">") == 0) { x = lval_sexpr(); }
-    if (strstr(ast->tag, "sexpr"))  { x = lval_sexpr(); }
+    if (strcmp(ast->tag, ">") == 0) { x = lval_sexpr(); } // if the input is + 2 2 no parens exactly
+    if (strstr(ast->tag, "sexpr"))  { x = lval_sexpr(); } // if the input is (+ 2 2) w/ parens
+    if (strstr(ast->tag, "qexpr"))  { x = lval_qexpr(); } // if the input is {+ 2 2}
 
     for (int i = 0; i < ast->children_num; i++) {
         if (strcmp(ast->children[i]->contents, "(") == 0) { continue; }
         if (strcmp(ast->children[i]->contents, ")") == 0) { continue; }
+        if (strcmp(ast->children[i]->contents, "{") == 0) { continue; }
+        if (strcmp(ast->children[i]->contents, "}") == 0) { continue; }
         if (strcmp(ast->children[i]->tag,  "regex") == 0) { continue; }
         x = lval_add(x, lval_read(ast->children[i]));
     }
@@ -130,7 +167,7 @@ void lval_expr_print(lval* v, char open, char close);
 void lval_print(lval* v) {
     switch (v->type) {
         case LVAL_NUM:
-            printf("%li\n", v->num);
+            printf("%li", v->num);
             break;
         case LVAL_ERR:
             printf("Error: %s", v->err);
@@ -141,9 +178,15 @@ void lval_print(lval* v) {
         case LVAL_SEXPR:
             lval_expr_print(v, '(', ')');
             break;
+        case LVAL_QEXPR:
+            lval_expr_print(v, '{', '}');
+            break;
     }
 }
-
+/* because the ast is converted to one giant sexpr, to process it
+ * you need to traverse it, all its children, hence all the 
+ * for loops with pointers.
+*/
 void lval_expr_print(lval* v, char open, char close) {
     putchar(open);
     for (int i = 0; i < v->count; i++) {
@@ -160,6 +203,7 @@ void lval_println(lval* v) {
     putchar('\n');
 }
 
+// pops the cell array, removes lval* at i and returns it.
 lval* lval_pop(lval* v, int i) {
     // find the item at i
     lval* x = v->cell[i];
@@ -169,7 +213,7 @@ lval* lval_pop(lval* v, int i) {
     v->cell = realloc(v->cell, sizeof(lval*) * v->count); // reallocate memory used
     return x;
 }
-
+// takes element i in cell array of v, returns it and deletes v
 lval* lval_take(lval* v, int i) {
     lval* x = lval_pop(v, i);
     lval_del(v);
@@ -222,14 +266,96 @@ lval* builtin_op(lval* a, char* op) {
     return x;
 }
 
-lval* lval_eval(lval* v);
+#define LASSERT(args, cond, err) if (!(cond)) { lval_del(args); return lval_err(err); }
 
+// built in head function to operate on q-expressions aka lists
+lval* builtin_head(lval* a) {
+    LASSERT(a, a->count == 1, "Function 'head' passed too many args")
+    LASSERT(a, a->cell[0]->type == LVAL_QEXPR, "Function 'head' passed incorrect types")
+    LASSERT(a, a->cell[0]->count != 0, "Function 'head' passed {}")
+
+    lval* v = lval_take(a, 0);
+    while (v->count > 1) { lval_del(lval_pop(v, 1)); }
+    return v;
+}
+// built in tail function to operate on q-expressions aka lists
+lval* builtin_tail(lval* a) {
+  /* Check Error Conditions */
+    LASSERT(a, a->count == 1, "Function 'tail' passed too many args")
+    LASSERT(a, a->cell[0]->type == LVAL_QEXPR, "Function 'tail' passed incorrect types")
+    LASSERT(a, a->cell[0]->count != 0, "Function 'tail' passed {}")
+
+    /* Take first argument */
+    lval* v = lval_take(a, 0);
+
+    /* Delete first element and return */
+    lval_del(lval_pop(v, 0));
+    return v;
+}
+// built in list function, convers sexpressions to list
+lval* builtin_list(lval* a) {
+    a->type = LVAL_QEXPR;
+    return a;
+}
+
+lval* builtin_eval(lval* a) {
+    LASSERT(a, a->count == 1, "Function 'eval' passed too many arguments");
+    LASSERT(a, a->cell[0]->type == LVAL_QEXPR, "Function 'eval' passed incorrect type");
+
+    lval* x = lval_take(a, 0);
+    x->type = LVAL_SEXPR;
+    return lval_eval(x);
+}
+
+lval* lval_join(lval* x, lval* y) {
+    /* For each cell in 'y' add it to 'x' */
+    while (y->count) {
+        x = lval_add(x, lval_pop(y, 0));
+    }
+    /* Delete the empty 'y' and return 'x' */
+    lval_del(y);
+    return x;
+}
+
+lval* builtin_join(lval* expr) {
+    for (int i = 0; i < expr->count; i++) {
+        LASSERT(expr, expr->cell[i]->type == LVAL_QEXPR, "Function 'join' passed incorrect type.");
+    }
+
+    lval* x = lval_pop(expr, 0);
+
+    while (expr->count) {
+        x = lval_join(x, lval_pop(expr, 0));
+    }
+
+    lval_del(expr);
+    return x;
+}
+
+// lval* builtin_cons(lval* expr) {}
+// lval* builtin_len(lval* expr) {}
+
+lval* builtin(lval* expr, char* func) {
+    if (strcmp("list", func) == 0) { return builtin_list(expr); }
+    if (strcmp("head", func) == 0) { return builtin_head(expr); }
+    if (strcmp("tail", func) == 0) { return builtin_tail(expr); }
+    if (strcmp("join", func) == 0) { return builtin_join(expr); }
+    if (strcmp("eval", func) == 0) { return builtin_eval(expr); }
+    if (strstr("+-/*", func)) { return builtin_op(expr, func); }
+    lval_del(expr);
+    return lval_err("Unknown Function");
+}
+
+/* so the expression (+ 2 2) passed through eval
+ * (+ 2 2) = lval sexpr [lval sym, lval num, lval num]
+ * 
+*/
 lval* lval_eval_sexpr(lval* v) {
-    // evaluate children
+    // evaluate children if there are any
     for (int i = 0; i < v->count; i++) {
         v->cell[i] = lval_eval(v->cell[i]);
     }
-    // error checking
+    // error checking, here the only error will be an invalid number
     for (int i = 0; i < v->count; i++) {
         if (v->cell[i]->type == LVAL_ERR) { return lval_take(v, i); }
     }
@@ -245,11 +371,15 @@ lval* lval_eval_sexpr(lval* v) {
         return lval_err("S-expression Does not start with symbol");
     }
     // call builtin with operator
-    lval* result = builtin_op(v, f->sym);
+    lval* result = builtin(v, f->sym);
     lval_del(f);
     return result;
 }
 
+/* lval_eval is passed the root or first lval from the reader, the
+ * reader having converted and ast to a lval list. lval type is almost
+ * guarenteed to be an sexpr unless its an expr or invalid.
+*/
 lval* lval_eval(lval* v) {
     // evaluate S-expressions
     if (v->type == LVAL_SEXPR) { return lval_eval_sexpr(v); }
@@ -262,20 +392,23 @@ int main(int argc, char** argv) {
     mpc_parser_t* Number = mpc_new("number");
     mpc_parser_t* Symbol = mpc_new("symbol"); // operators, variables, functions etc
     mpc_parser_t* Sexpr = mpc_new("sexpr");
+    mpc_parser_t* Qexpr = mpc_new("qexpr");
     mpc_parser_t* Expr = mpc_new("expr");
     mpc_parser_t* Program = mpc_new("program");
 
     mpca_lang(MPCA_LANG_DEFAULT,
     "                                                                                               \
         number  : /-?[0-9]+/ ;                                                                      \
-        symbol  : '+' | '*' | '/' | '-' | '%' | \"add\" | \"sub\" | \"mul\" | \"div\" | \"mod\" ;   \
+        symbol  : '+' | '*' | '/' | '-' | '%' | \"add\" | \"sub\" | \"mul\" | \"div\" | \"mod\"     \
+                | \"list\" | \"head\" | \"tail\" | \"join\" | \"eval\" ;                            \
         sexpr   : '(' <expr>* ')' ;                                                                 \
-        expr    : <number> | <symbol> | <sexpr> ;                                                   \
+        qexpr   : '{' <expr>* '}' ;                                                                 \
+        expr    : <number> | <symbol> | <sexpr> | <qexpr>;                                          \
         program : /^/ <expr>* /$/ ;                                                                 \
-    ", Number, Symbol, Sexpr, Expr, Program);
+    ", Number, Symbol, Sexpr, Qexpr, Expr, Program);
 
     /* start interactive prompt */
-    puts("HyperLambda lisp Version 0.0.3");
+    puts("HyperLambda lisp Version 0.0.4");
     puts("Press Ctrl+C to Exit\n");
 
     while(1) {
@@ -295,6 +428,6 @@ int main(int argc, char** argv) {
         free(input);
     }
     /* delete parsers */
-    mpc_cleanup(5, Number, Symbol, Sexpr, Expr, Program);
+    mpc_cleanup(6, Number, Symbol, Sexpr, Qexpr, Expr, Program);
     return 0;
 }
