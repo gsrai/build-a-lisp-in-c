@@ -122,7 +122,7 @@ An sexpression in the list is know as a cell (or a cons cell).
 There is a common pattern when adding new features to a language, it involves the following steps:
 Syntax => Add a new rule to the language grammar.
 Representation => Add a new data type variation to represent the feature.
-Parsing => Add ne functions for reading the feature from the ast.
+Parsing => Add new functions for reading the feature from the ast.
 Semantics => Add a new function for evaluating and manipulating the feature.
 
 Using this pattern we can add a new feature, Quoted Expressions. A Q-expression will be a new type of lisp value.
@@ -136,6 +136,29 @@ Head => returns a q-expr of the first element
 Tail => returns a q-expr of the rest of the list
 join => join the two lists into one
 eval => eval the q-expression
+
+### Variables ###
+
+In order to make the language practical we need a way to name values, using variables. In order to have variables
+in our language we need to create a structure which stores name value associations of everything in our program,
+we can call this the environment.
+
+A valid variable name is represented by the following regex:
+Deus ex Regex: /[a-zA-Z0-9_+\\-*\\/\\\\=<>!&]+/
+Basically anything within the range specifier `[]` makes special characters lose meaning.
+A valid variable can be any upper lower alphanumeric string, with underscore and the arithmetic and equality symbols
+
+#### Environment ####
+
+The environment is a structure that holds name value associations for our program. To hold names and values the struct
+will have two lists: one for lisp values `lval` and one for the symbol itself `the variable name`.
+(I am not sure why we would not use a sorted structure (tree) or a hashmap as these would have quicker symbol lookup,
+the arrays are not ordered, only by order of insertions)
+
+#### defn ####
+
+We have used the environment to register the built in functions to variables in the environment. We need a way to all the
+user to define its own functions.
 
 ## differences from other lisps ##
 
