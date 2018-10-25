@@ -155,10 +155,25 @@ will have two lists: one for lisp values `lval` and one for the symbol itself `t
 (I am not sure why we would not use a sorted structure (tree) or a hashmap as these would have quicker symbol lookup,
 the arrays are not ordered, only by order of insertions)
 
-#### defn ####
+#### def ####
 
 We have used the environment to register the built in functions to variables in the environment. We need a way to all the
-user to define its own functions.
+user to define its own functions and variables.
+
+### Functions ###
+
+Functions are the essence of all programming. In the early days of computer science they represented a naive dream. The idea was that we could reduce computation into these smaller and smaller bits of re-usable code. Given enough time, and a proper structure for libraries, eventually we would have written code required for all computational needs. No longer would people have to write their own functions, and programming would consist of an easy job of stitching together components.
+
+Lambda calculus is the study of functions, it combines logic, maths, an computer science. Using this notation we can have user defined functions:
+`\ {x y} {+ x y}` => lambda function that adds x and y arguements
+`((\ {x y} {+ x y}) 10 20)` => sexpression invoking the function with the arguements 10 and 20.
+`(def {add} (\ {x y} {+ x y}))` => binding the name add to the lambda
+`(add 10 20)` => now we can call it like so
+
+The lisp value (lval) structure needs to be modified to support user defined functions, A function has 3 components:
+a list of formal parameters, a body and an environment/scope.
+The body and parameters can both be lists, where the body is passed to eval and the formal parameters are bound to the
+arguements passed in and stored in the environment.
 
 ## differences from other lisps ##
 
